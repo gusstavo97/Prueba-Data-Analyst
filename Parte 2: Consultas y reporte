@@ -1,0 +1,108 @@
+## Parte 2: Consultas y reporte
+-- 1. ¿Cuántos proyectos activos hay por producto?
+SELECT product_id, COUNT(*) AS active_projects
+FROM warehouse.fct_tasks
+WHERE archived = FALSE
+GROUP BY product_id;
+
+--2. ¿Cuántos proyectos activos hay por Equipo?
+SELECT _equipo_id, COUNT(*) AS active_projects
+FROM warehouse.fct_tasks
+WHERE archived = FALSE
+GROUP BY _equipo_id;
+
+--3. La eficiencia corresponde a la proporción del tiempo utilizado / tiempo estimado, con
+--base en esto, calcule la eficiencia, por tarea padre, con base en esta medida,
+--responder las siguientes preguntas a nivel de producto y equipo:
+--a. ¿Cual es la tarea padre con la eficiencia más alta?
+SELECT parent, MAX(time_spent_in_miliseconds / time_estimate) AS max_efficiency
+FROM warehouse.fct_tasks
+GROUP BY parent;
+
+--b. ¿Cual es la tarea padre con la eficiencia más baja?
+SELECT parent, MIN(time_spent_in_miliseconds / time_estimate) AS min_efficiency
+FROM warehouse.fct_tasks
+GROUP BY parent;
+
+--c. ¿Calcular la desviación estándar del total de tareas padre?
+SELECT STDDEV(time_spent_in_miliseconds / time_estimate) AS efficiency_std_dev
+FROM warehouse.fct_tasks;
+
+-- i. ¿Cómo se puede interpretar este resultado?
+-- Una desviación estándar alta indica que las eficiencias están más dispersas alrededor de la media, mientras que una desviación estándar baja indica que las eficiencias son más uniformes.
+
+--d. ¿Cual es el promedio de las sub-tareas ( tareas hijas ) por tareas padre?
+SELECT parent, AVG(time_spent_in_miliseconds / time_estimate) AS avg_efficiency
+FROM warehouse.fct_tasks
+GROUP BY parent;
+
+--e. Calcular otras medidas de tendencia central ¿Qué nos sugieres?
+-- Puedes calcular la mediana (percentil 50) y la moda (valor más común). La mediana te dará una idea de la eficiencia típica y la moda te mostrará la eficiencia más común.
+
+--f. ¿Calcular el percentil 25 y el percentil 75 por tarea padre?
+SELECT parent,
+       PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY time_spent_in_miliseconds / time_estimate) AS percentile_25,
+       PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY time_spent_in_miliseconds / time_estimate) AS percentile_75
+FROM warehouse.fct_tasks
+GROUP BY parent;
+
+--g. Calcular la eficiencia de todas las tareas, por usuario asignado.
+SELECT user_assignes_initials, AVG(time_spent_in_miliseconds / time_estimate) AS avg_efficiency
+FROM warehouse.fct_tasks
+GROUP BY user_assignes_initials;
+
+--i. ¿Quién es el usuario con mayor eficiencia?
+SELECT user_assignes_initials, MAX(time_spent_in_miliseconds / time_estimate) AS max_efficiency
+FROM warehouse.fct_tasks
+GROUP BY user_assignes_initials
+ORDER BY max_efficiency DESC
+LIMIT 1; -- null
+
+
+--ii. ¿Cuál es el tiempo promedio en el qué un usuario completa una tarea?
+SELECT user_assignes_initials, AVG(time_spent_in_miliseconds) AS avg_time_spent
+FROM warehouse.fct_tasks
+GROUP BY user_assignes_initials;
+
+--iii. ¿Qué otra medida de tendencia central o de dispersión podemos usar para obtener conclusiones?
+-- Además del promedio y la desviación estándar, puedes considerar el uso de la mediana o percentiles para obtener una imagen más completa de la distribución de tiempos.
+
+--4. ¿Qué porcentaje de tareas completadas existen? ( en general, por producto, por equipo)
+
+SELECT 
+  SUM(CASE WHEN date_done IS NOT NULL THEN 1 ELSE 0 END) AS completed_tasks,
+  COUNT(*) AS total_tasks,
+  100.0 * SUM(CASE WHEN date_done IS NOT NULL THEN 1 ELSE 0 END) / COUNT(*) AS completion_percentage
+FROM warehouse.fct_tasks;
+
+
+--5. Calcular el porcentaje de tareas por cada estado, del total de tareas padre que existen, ¿que porcentaje hay en cada estado? ( en general, por producto, por equipo)
+
+SELECT 
+  parent,
+  COUNT(*) AS total_tasks,
+  100.0 * COUNT(*) / (SELECT COUNT(*) FROM warehouse.fct_tasks WHERE parent IS NOT NULL) AS percentage
+FROM warehouse.fct_tasks
+WHERE parent IS NOT NULL
+GROUP BY parent;
+
+--6. Calcular la cantidad de tareas padre ( proyectos ) por semana de creación.
+
+SELECT DATE_PART(week, date_created) AS week_number, COUNT(*) AS tasks_created
+FROM warehouse.fct_tasks
+GROUP BY week_number;
+
+--7. Calcular la cantidad de tareas padre ( proyectos ) por mes de creación.
+
+SELECT DATE_TRUNC('month', date_created) AS month, COUNT(*) AS tasks_created
+FROM warehouse.fct_tasks
+GROUP BY month;
+
+--8. Calcular la cantidad de tareas padre ( proyectos ) por trimestre de creación.
+
+SELECT DATE_TRUNC('quarter', date_created) AS quarter, COUNT(*) AS tasks_created
+FROM warehouse.fct_tasks
+GROUP BY quarter;
+
+--9. ¿Qué relaciones encuentras entre las variables?
+--10. ¿Qué otras conclusiones puedes obtener a través de este conjunto de datos?
