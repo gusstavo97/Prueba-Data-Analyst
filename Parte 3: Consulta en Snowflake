@@ -1,0 +1,11 @@
+-- Parte 3: Consulta en Snowflake
+CREATE OR REPLACE VIEW vw_type_config_extract AS
+SELECT
+  id,
+  t.key AS config_key,
+  t.value AS config_value
+FROM type_config,
+LATERAL FLATTEN(input => type_config) t;
+
+SELECT *
+FROM vw_type_config_extract;
