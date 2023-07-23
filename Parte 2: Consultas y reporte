@@ -15,14 +15,23 @@ GROUP BY _equipo_id;
 --base en esto, calcule la eficiencia, por tarea padre, con base en esta medida,
 --responder las siguientes preguntas a nivel de producto y equipo:
 --a. ¿Cual es la tarea padre con la eficiencia más alta?
-SELECT parent, MAX(time_spent_in_miliseconds / time_estimate) AS max_efficiency
+SELECT parent, time_spent_in_miliseconds / time_estimate AS efficiency
 FROM warehouse.fct_tasks
-GROUP BY parent;
+WHERE (parent, time_spent_in_miliseconds / time_estimate) IN (
+  SELECT parent, MAX(time_spent_in_miliseconds / time_estimate) AS max_efficiency
+  FROM warehouse.fct_tasks
+  GROUP BY parent
+)
+LIMIT 1;
+
+
 
 --b. ¿Cual es la tarea padre con la eficiencia más baja?
-SELECT parent, MIN(time_spent_in_miliseconds / time_estimate) AS min_efficiency
+SELECT parent, time_spent_in_miliseconds / time_estimate AS efficiency
 FROM warehouse.fct_tasks
-GROUP BY parent;
+ORDER BY efficiency
+LIMIT 1;
+
 
 --c. ¿Calcular la desviación estándar del total de tareas padre?
 SELECT STDDEV(time_spent_in_miliseconds / time_estimate) AS efficiency_std_dev
@@ -32,12 +41,19 @@ FROM warehouse.fct_tasks;
 -- Una desviación estándar alta indica que las eficiencias están más dispersas alrededor de la media, mientras que una desviación estándar baja indica que las eficiencias son más uniformes.
 
 --d. ¿Cual es el promedio de las sub-tareas ( tareas hijas ) por tareas padre?
+
 SELECT parent, AVG(time_spent_in_miliseconds / time_estimate) AS avg_efficiency
 FROM warehouse.fct_tasks
+WHERE parent IS NOT NULL
 GROUP BY parent;
+
 
 --e. Calcular otras medidas de tendencia central ¿Qué nos sugieres?
 -- Puedes calcular la mediana (percentil 50) y la moda (valor más común). La mediana te dará una idea de la eficiencia típica y la moda te mostrará la eficiencia más común.
+SELECT
+  PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY time_spent_in_miliseconds / time_estimate) AS median_efficiency
+FROM warehouse.fct_tasks;
+
 
 --f. ¿Calcular el percentil 25 y el percentil 75 por tarea padre?
 SELECT parent,
@@ -52,39 +68,94 @@ FROM warehouse.fct_tasks
 GROUP BY user_assignes_initials;
 
 --i. ¿Quién es el usuario con mayor eficiencia?
-SELECT user_assignes_initials, MAX(time_spent_in_miliseconds / time_estimate) AS max_efficiency
+SELECT 
+  user_assignes_initials, 
+-- La función COALESCE devuelve la primera expresión no nula de una lista de expresiones.
+  COALESCE(MAX(time_spent_in_miliseconds / time_estimate), 0) AS max_efficiency
 FROM warehouse.fct_tasks
 GROUP BY user_assignes_initials
 ORDER BY max_efficiency DESC
-LIMIT 1; -- null
-
+LIMIT 1;
 
 --ii. ¿Cuál es el tiempo promedio en el qué un usuario completa una tarea?
-SELECT user_assignes_initials, AVG(time_spent_in_miliseconds) AS avg_time_spent
-FROM warehouse.fct_tasks
-GROUP BY user_assignes_initials;
+
+SELECT AVG(avg_time_spent) AS average_of_averages
+FROM (
+  SELECT user_assignes_initials, AVG(time_spent_in_miliseconds) AS avg_time_spent
+  FROM warehouse.fct_tasks
+  GROUP BY user_assignes_initials
+) AS subquery;
+
 
 --iii. ¿Qué otra medida de tendencia central o de dispersión podemos usar para obtener conclusiones?
 -- Además del promedio y la desviación estándar, puedes considerar el uso de la mediana o percentiles para obtener una imagen más completa de la distribución de tiempos.
 
 --4. ¿Qué porcentaje de tareas completadas existen? ( en general, por producto, por equipo)
 
+--Porcentaje de tareas completadas en general:
 SELECT 
-  SUM(CASE WHEN date_done IS NOT NULL THEN 1 ELSE 0 END) AS completed_tasks,
-  COUNT(*) AS total_tasks,
-  100.0 * SUM(CASE WHEN date_done IS NOT NULL THEN 1 ELSE 0 END) / COUNT(*) AS completion_percentage
+  COUNT(CASE WHEN date_done IS NOT NULL THEN 1 END) * 100.0 / COUNT(*) AS general_completas
 FROM warehouse.fct_tasks;
+
+--Porcentaje de tareas completadas por producto:
+SELECT 
+  product_id,
+  COUNT(CASE WHEN date_done IS NOT NULL THEN 1 END) * 100.0 / COUNT(*) AS product_completion_percentage
+FROM warehouse.fct_tasks
+GROUP BY product_id;
+
+--Porcentaje de tareas completadas por equipo:
+SELECT 
+  _equipo_id,
+  COUNT(CASE WHEN date_done IS NOT NULL THEN 1 END) * 100.0 / COUNT(*) AS team_completion_percentage
+FROM warehouse.fct_tasks
+GROUP BY _equipo_id;
 
 
 --5. Calcular el porcentaje de tareas por cada estado, del total de tareas padre que existen, ¿que porcentaje hay en cada estado? ( en general, por producto, por equipo)
 
+-- Porcentaje de tareas por cada estado en general:
+
 SELECT 
-  parent,
-  COUNT(*) AS total_tasks,
-  100.0 * COUNT(*) / (SELECT COUNT(*) FROM warehouse.fct_tasks WHERE parent IS NOT NULL) AS percentage
+  COUNT(CASE WHEN is_parent = true THEN 1 END) AS count_is_parent,
+  COUNT(CASE WHEN date_done IS NOT NULL AND is_parent = true THEN 1 END) AS count_date_done_true,
+  COUNT(CASE WHEN date_done IS NULL AND is_parent = true THEN 1 END) AS count_date_done_null,
+  COUNT(CASE WHEN date_done IS NOT NULL AND is_parent = true THEN 1 END) * 100 / COUNT(CASE WHEN is_parent = true THEN 1 END) AS general_padres_completado,
+  COUNT(CASE WHEN date_done IS NULL AND is_parent = true THEN 1 END) * 100 / COUNT(CASE WHEN is_parent = true THEN 1 END) AS general_padres_en_proceso
+FROM warehouse.fct_tasks;
+
+
+-- Porcentaje de tareas por cada estado por producto:
+
+SELECT 
+  product_id,
+  COUNT(CASE WHEN is_parent = true THEN 1 END) AS count_is_parent,
+  COUNT(CASE WHEN date_done IS NOT NULL AND is_parent = true THEN 1 END) AS count_date_done_true,
+  COUNT(CASE WHEN date_done IS NULL AND is_parent = true THEN 1 END) AS count_date_done_null,
+  COUNT(CASE WHEN date_done IS NOT NULL AND is_parent = true THEN 1 END) * 100 / COUNT(CASE WHEN is_parent = true THEN 1 END) AS producto_completado,
+  COUNT(CASE WHEN date_done IS NULL AND is_parent = true THEN 1 END) * 100 / COUNT(CASE WHEN is_parent = true THEN 1 END) AS producto_en_proceso
 FROM warehouse.fct_tasks
-WHERE parent IS NOT NULL
-GROUP BY parent;
+GROUP BY product_id;
+
+
+
+-- Porcentaje de tareas por cada estado por equipo
+SELECT 
+  _equipo_id,
+  folder_name AS state,
+  COUNT(CASE WHEN date_done IS NOT NULL THEN 1 END) * 100.0 / COUNT(*) AS team_state_completion_percentage
+FROM warehouse.fct_tasks
+GROUP BY _equipo_id, folder_name;
+
+SELECT 
+  _equipo_id,
+  COUNT(CASE WHEN is_parent = true THEN 1 END) AS count_is_parent,
+  COUNT(CASE WHEN date_done IS NOT NULL AND is_parent = true THEN 1 END) AS count_date_done_true,
+  COUNT(CASE WHEN date_done IS NULL AND is_parent = true THEN 1 END) AS count_date_done_null,
+  COALESCE(COUNT(CASE WHEN date_done IS NOT NULL AND is_parent = true THEN 1 END) * 100 / NULLIF(COUNT(CASE WHEN is_parent = true THEN 1 END), 0), 0) AS result_date_done_true,
+  COALESCE(COUNT(CASE WHEN date_done IS NULL AND is_parent = true THEN 1 END) * 100 / NULLIF(COUNT(CASE WHEN is_parent = true THEN 1 END), 0), 0) AS result_date_done_null
+FROM warehouse.fct_tasks
+GROUP BY _equipo_id;
 
 --6. Calcular la cantidad de tareas padre ( proyectos ) por semana de creación.
 
@@ -94,15 +165,16 @@ GROUP BY week_number;
 
 --7. Calcular la cantidad de tareas padre ( proyectos ) por mes de creación.
 
-SELECT DATE_TRUNC('month', date_created) AS month, COUNT(*) AS tasks_created
+SELECT EXTRACT(MONTH FROM date_created) AS month, COUNT(*) AS tasks_created
 FROM warehouse.fct_tasks
 GROUP BY month;
 
+
 --8. Calcular la cantidad de tareas padre ( proyectos ) por trimestre de creación.
 
-SELECT DATE_TRUNC('quarter', date_created) AS quarter, COUNT(*) AS tasks_created
+SELECT 
+  EXTRACT(YEAR FROM date_created) AS year,
+  CEIL(EXTRACT(MONTH FROM date_created) / 3) AS quarter,
+  COUNT(*) AS tasks_created
 FROM warehouse.fct_tasks
-GROUP BY quarter;
-
---9. ¿Qué relaciones encuentras entre las variables?
---10. ¿Qué otras conclusiones puedes obtener a través de este conjunto de datos?
+GROUP BY year, quarter;
